@@ -26,6 +26,8 @@
     "sharp-ico": "^0.1.5"
   },
   "dependencies": {
+    "@fontsource/comfortaa": "^5.2.8",
+    "lucide-svelte": "^0.562.0",
     "sv-router": "^0.13.0"
   }
 }

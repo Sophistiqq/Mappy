@@ -14,5 +14,5 @@
   {#if setupState == "done"}
     <Topbar />
   {/if}
-  <Router />
+  <Router base="/" />
 </main>

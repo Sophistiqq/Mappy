@@ -1,0 +1,15 @@
+* {
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-family: "Comfortaa", sans-serif;
+}
+
+
+a {
+  text-decoration: none;
+  color: inherit;
+}

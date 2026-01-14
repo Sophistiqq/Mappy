@@ -3,6 +3,7 @@ import GettingStarted from "./routes/GettingStarted.svelte"
 import Home from './routes/Home.svelte';
 import { auth } from './auth.svelte';
 import Login from './routes/Login.svelte';
+import CreateAccount from './routes/CreateAccount.svelte';
 
 // Helper to check setup state dynamically
 function isSetupComplete(): boolean {
@@ -46,6 +47,23 @@ export const { p, navigate, isActive, route } = createRouter({
   },
   '/login': {
     '/': Login,
+    hooks: {
+      async beforeLoad() {
+        // Redirect to setup if not complete
+        if (!isSetupComplete()) {
+          throw navigate('/')
+        }
+
+        // Redirect to home if already authenticated
+        const isAuthenticated = await auth.checkAuth()
+        if (isAuthenticated) {
+          throw navigate('/home')
+        }
+      }
+    }
+  },
+  '/create-account': {
+    '/': CreateAccount,
     hooks: {
       async beforeLoad() {
         // Redirect to setup if not complete

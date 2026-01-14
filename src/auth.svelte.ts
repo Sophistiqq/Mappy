@@ -54,6 +54,47 @@ class AuthManager {
     }
   }
 
+  async register(
+    username: string,
+    password: string,
+    email: string,
+    first_name: string,
+    last_name: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.state.loading = true;
+
+      const res = await fetch(`${url}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username,
+          password,
+          email,
+          first_name,
+          last_name
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        this.state.loading = false;
+        return { success: false, error: errorData.message || 'Registration failed' };
+      }
+
+      // After successful registration, fetch user details
+      await this.fetchUser();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Registration error:', error);
+      this.state.loading = false;
+      return { success: false, error: 'Network error' };
+    }
+  }
+
   async fetchUser(): Promise<User | null> {
     try {
       const res = await fetch(`${url}/auth/me`, {

@@ -17,7 +17,7 @@
   }
 
   // Routes where topbar should be hidden
-  const hideTopbarRoutes = ["/login", "/"];
+  const hideTopbarRoutes = ["/login", "/", "/create-account"];
 
   // Reactive check for showing topbar
   let showTopbar = $derived(

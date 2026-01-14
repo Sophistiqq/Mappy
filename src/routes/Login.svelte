@@ -92,7 +92,11 @@
 
     <div class="footer-links">
       <button type="button" class="link-btn">Forgot password?</button>
-      <button type="button" class="link-btn">Create account</button>
+      <button
+        type="button"
+        class="link-btn"
+        onclick={() => navigate("/create-account")}>Create account</button
+      >
     </div>
   </div>
 </div>

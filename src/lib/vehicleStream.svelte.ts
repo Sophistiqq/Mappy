@@ -28,6 +28,7 @@ class VehicleStreamManager {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 3000;
+  private currentRouteId?: number; // Store current routeId for reconnection
 
   connect(routeId?: number) {
     if (this.eventSource) {
@@ -35,6 +36,7 @@ class VehicleStreamManager {
     }
 
     this.error = null;
+    this.currentRouteId = routeId; // Save for reconnection
 
     const streamUrl = routeId
       ? `${url}/vehicles/stream?routeId=${routeId}`
@@ -45,7 +47,10 @@ class VehicleStreamManager {
 
       this.eventSource.addEventListener('initial', (event) => {
         try {
-          this.vehicles = JSON.parse(event.data);
+          this.vehicles = JSON.parse(event.data).map((v: Vehicle) => ({
+            ...v,
+            lastUpdate: v.lastUpdate ? new Date(v.lastUpdate).toISOString() : null
+          }));
           this.isConnected = true;
           this.reconnectAttempts = 0;
           console.log('📍 Initial vehicles loaded:', this.vehicles.length);
@@ -57,8 +62,19 @@ class VehicleStreamManager {
 
       this.eventSource.addEventListener('update', (event) => {
         try {
-          this.vehicles = JSON.parse(event.data);
-          console.log('🔄 Vehicles updated:', this.vehicles.length);
+          const updates: Vehicle[] = JSON.parse(event.data).map((v: Vehicle) => ({
+            ...v,
+            lastUpdate: v.lastUpdate ? new Date(v.lastUpdate).toISOString() : null
+          }));
+
+          const map = new Map(this.vehicles.map(v => [v.id, v]));
+
+          for (const v of updates) {
+            map.set(v.id, v);
+          }
+
+          this.vehicles = Array.from(map.values());
+          console.log('🔄 Vehicles updated:', updates.length);
         } catch (err) {
           console.error('Failed to parse update data:', err);
         }
@@ -88,8 +104,8 @@ class VehicleStreamManager {
       console.log(`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
 
       setTimeout(() => {
-        if (this.eventSource) {
-          this.connect();
+        if (!this.isConnected) { // Only reconnect if still not connected
+          this.connect(this.currentRouteId); // Use saved routeId
         }
       }, this.reconnectDelay * this.reconnectAttempts);
     } else {
@@ -103,6 +119,7 @@ class VehicleStreamManager {
       this.eventSource.close();
       this.eventSource = null;
       this.isConnected = false;
+      this.reconnectAttempts = 0;
       console.log('🔌 Disconnected from vehicle stream');
     }
   }

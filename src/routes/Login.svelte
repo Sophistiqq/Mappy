@@ -1,7 +1,7 @@
 <script lang="ts">
   import { auth } from "../auth.svelte";
   import { navigate } from "../router";
-  import { LogIn, User, Lock, AlertCircle } from "lucide-svelte";
+  import { LogIn, User, Lock, CircleAlert } from "lucide-svelte";
 
   let username = $state("");
   let password = $state("");
@@ -74,7 +74,7 @@
 
       {#if error}
         <div class="error-message">
-          <AlertCircle size={18} strokeWidth={2} />
+          <CircleAlert size={18} strokeWidth={2} />
           <span>{error}</span>
         </div>
       {/if}

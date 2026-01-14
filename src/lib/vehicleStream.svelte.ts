@@ -1,7 +1,7 @@
 // src/lib/vehicleStream.svelte.ts
 const url = import.meta.env.VITE_URL;
 
-interface Vehicle {
+export interface Vehicle {
   id: number;
   plateNumber: string;
   type: string;

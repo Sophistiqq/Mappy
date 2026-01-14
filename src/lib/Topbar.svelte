@@ -117,7 +117,7 @@
             <div class="card-icon">
               <House size={24} strokeWidth={2} />
             </div>
-            <span class="card-label">House</span>
+            <span class="card-label">Home</span>
           </button>
 
           <button
@@ -223,7 +223,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
+    padding: 1rem;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -258,7 +258,7 @@
   }
 
   .menu-btn {
-    padding: 0.75rem 1.25rem;
+    padding: 1.25rem;
     border: none;
     background-color: transparent;
     color: white;

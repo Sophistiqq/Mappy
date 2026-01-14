@@ -4,13 +4,13 @@
     NavigationControl,
     ScaleControl,
     GeolocateControl,
-    Marker,
-    Popup,
   } from "svelte-maplibre-gl";
-  import { Bus, Car, MapPin, Gauge, Users, Clock } from "lucide-svelte";
+  import maplibregl from "maplibre-gl";
   import { onMount, onDestroy } from "svelte";
   import { vehicleStream } from "./vehicleStream.svelte";
   import BottomSheet from "./BottomSheet.svelte";
+
+  let map: maplibregl.Map | any = $state(null);
 
   // Montalban, Rizal coordinates
   const montalbanCenter = { lng: 121.1394, lat: 14.7306 };
@@ -24,7 +24,6 @@
   let routes = $state<any[]>([]);
   let terminals = $state<any[]>([]);
   let selectedRoute = $state<number | null>(null);
-  let loading = $state(true);
 
   // Fetch routes and terminals
   async function fetchData() {
@@ -47,8 +46,6 @@
       }
     } catch (error) {
       console.error("Failed to fetch data:", error);
-    } finally {
-      loading = false;
     }
   }
 
@@ -89,17 +86,7 @@
     return `${diffHours} hours ago`;
   }
 
-  // Helper to get vehicle icon component
-  function getVehicleIconComponent(type: string) {
-    switch (type) {
-      case "bus":
-        return Bus;
-      default:
-        return Car;
-    }
-  }
-
-  function createVehicleMarkerEl(vehicle) {
+  function createVehicleMarkerEl(vehicle: any) {
     const el = document.createElement("div");
     el.className = "custom-vehicle-marker";
 
@@ -123,7 +110,7 @@
     return el;
   }
 
-  function createTerminalMarkerEl(terminal) {
+  function createTerminalMarkerEl(_terminal: any) {
     const el = document.createElement("div");
     el.className = "custom-terminal-marker";
 
@@ -142,6 +129,144 @@
 
     return el;
   }
+
+  function getVehiclePopup(vehicle: any) {
+    return new maplibregl.Popup({
+      offset: [0, -38],
+      closeButton: true,
+    }).setHTML(
+      `
+      <div class="vehicle-popup">
+        <div class="popup-top">
+          <span class="vehicle-badge">${vehicle.type.replace("_", " ").toUpperCase()}</span>
+          <span class="plate-badge">${vehicle.plateNumber}</span>
+        </div>
+        ${
+          vehicle.route
+            ? `
+          <div class="route-section">
+            <div class="route-color-bar" style="background: ${vehicle.route.color || "#2a9d8f"}"></div>
+            <div class="route-details">
+              <span class="route-code-badge">${vehicle.route.code}</span>
+              <span class="route-name-text">${vehicle.route.name}</span>
+            </div>
+          </div>
+        `
+            : ""
+        }
+        <div class="stats-grid">
+          ${
+            vehicle.speed !== null
+              ? `
+            <div class="stat-item">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20Z"/><path d="m14 10-2 4-2-4"/></svg>
+              <div class="stat-content">
+                <span class="stat-label">Speed</span>
+                <span class="stat-value">${Math.round(vehicle.speed)} km/h</span>
+              </div>
+            </div>
+          `
+              : ""
+          }
+          <div class="stat-item">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <div class="stat-content">
+              <span class="stat-label">Capacity</span>
+              <span class="stat-value">${vehicle.capacity} seats</span>
+            </div>
+          </div>
+        </div>
+        <div class="popup-footer">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span>Updated ${getTimeAgo(vehicle.lastUpdate)}</span>
+        </div>
+      </div>
+    `,
+    );
+  }
+
+  // Terminal markers
+  $effect(() => {
+    if (map && terminals.length > 0) {
+      for (const terminal of terminals) {
+        if (terminal.latitude && terminal.longitude) {
+          const popup = new maplibregl.Popup({
+            offset: [0, -35],
+            closeButton: true,
+          }).setHTML(`
+            <div class="terminal-popup">
+              <div class="popup-badge">TERMINAL</div>
+              <h3 class="terminal-title">${terminal.name}</h3>
+              ${terminal.address ? `<p class="terminal-address">${terminal.address}</p>` : ""}
+              ${
+                terminal.routeStops && terminal.routeStops.length > 0
+                  ? `
+                <div class="routes-section">
+                  <span class="section-label">ROUTES:</span>
+                  <div class="route-pills">
+                    ${terminal.routeStops.map((stop: any) => `<span class="route-pill">${stop.route.code}</span>`).join("")}
+                  </div>
+                </div>
+              `
+                  : ""
+              }
+            </div>
+          `);
+
+          new maplibregl.Marker({ element: createTerminalMarkerEl(terminal) })
+            .setLngLat([terminal.longitude, terminal.latitude])
+            .setPopup(popup)
+            .addTo(map);
+        }
+      }
+    }
+  });
+
+  // Vehicle markers
+  const vehicleMarkers = new Map();
+
+  $effect(() => {
+    if (map) {
+      const displayedVehicleIds = new Set(displayedVehicles.map((v) => v.id));
+
+      // Remove markers for vehicles that are no longer displayed
+      for (const [id, marker] of vehicleMarkers.entries()) {
+        if (!displayedVehicleIds.has(id)) {
+          marker.remove();
+          vehicleMarkers.delete(id);
+        }
+      }
+
+      // Add or update markers for displayed vehicles
+      for (const vehicle of displayedVehicles) {
+        if (!vehicle.currentLat || !vehicle.currentLng) continue;
+
+        if (vehicleMarkers.has(vehicle.id)) {
+          vehicleMarkers
+            .get(vehicle.id)
+            .setLngLat([vehicle.currentLng, vehicle.currentLat]);
+        } else {
+          const marker = new maplibregl.Marker({
+            element: createVehicleMarkerEl(vehicle),
+            anchor: "bottom",
+          })
+            .setLngLat([vehicle.currentLng, vehicle.currentLat])
+            .addTo(map);
+
+          marker.getElement().addEventListener("click", () => {
+            getVehiclePopup(vehicle).addTo(map);
+            // Fly to the marker's location
+            map.flyTo({
+              center: marker.getLngLat(),
+              zoom: 15, // Or any desired zoom level
+            });
+          });
+
+          vehicleMarkers.set(vehicle.id, marker);
+        }
+      }
+    }
+  });
 </script>
 
 <div class="map-container">
@@ -165,6 +290,7 @@
   {/if}
 
   <MapLibre
+    bind:map
     class="map"
     style={mapStyle}
     zoom={13}
@@ -178,99 +304,6 @@
       trackUserLocation={true}
       showUserLocation={true}
     />
-
-    <!-- Terminal markers -->
-    {#each terminals as terminal (terminal.id)}
-      {#if terminal.latitude && terminal.longitude}
-        <Marker
-          lnglat={[terminal.longitude, terminal.latitude]}
-          element={createTerminalMarkerEl(terminal)}
-        >
-          <Popup offset={[0, -35]} closeButton={true}>
-            <div class="terminal-popup">
-              <div class="popup-badge">TERMINAL</div>
-              <h3 class="terminal-title">{terminal.name}</h3>
-              {#if terminal.address}
-                <p class="terminal-address">{terminal.address}</p>
-              {/if}
-
-              {#if terminal.routeStops && terminal.routeStops.length > 0}
-                <div class="routes-section">
-                  <span class="section-label">ROUTES:</span>
-                  <div class="route-pills">
-                    {#each terminal.routeStops as stop}
-                      <span class="route-pill">{stop.route.code}</span>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            </div>
-          </Popup>
-        </Marker>
-      {/if}
-    {/each}
-
-    <!-- Vehicle markers -->
-    {#each displayedVehicles as vehicle (vehicle.id)}
-      {#if vehicle.currentLat && vehicle.currentLng}
-        <Marker
-          lnglat={[vehicle.currentLng, vehicle.currentLat]}
-          anchor="bottom"
-          element={createVehicleMarkerEl(vehicle)}
-        >
-          <Popup offset={[0, -38]} closeButton={true}>
-            <div class="vehicle-popup">
-              <div class="popup-top">
-                <span class="vehicle-badge"
-                  >{vehicle.type.replace("_", " ").toUpperCase()}</span
-                >
-                <span class="plate-badge">{vehicle.plateNumber}</span>
-              </div>
-
-              {#if vehicle.route}
-                <div class="route-section">
-                  <div
-                    class="route-color-bar"
-                    style="background: {vehicle.route.color || '#2a9d8f'}"
-                  ></div>
-                  <div class="route-details">
-                    <span class="route-code-badge">{vehicle.route.code}</span>
-                    <span class="route-name-text">{vehicle.route.name}</span>
-                  </div>
-                </div>
-              {/if}
-
-              <div class="stats-grid">
-                {#if vehicle.speed !== null}
-                  <div class="stat-item">
-                    <Gauge size={16} />
-                    <div class="stat-content">
-                      <span class="stat-label">Speed</span>
-                      <span class="stat-value"
-                        >{Math.round(vehicle.speed)} km/h</span
-                      >
-                    </div>
-                  </div>
-                {/if}
-
-                <div class="stat-item">
-                  <Users size={16} />
-                  <div class="stat-content">
-                    <span class="stat-label">Capacity</span>
-                    <span class="stat-value">{vehicle.capacity} seats</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="popup-footer">
-                <Clock size={14} />
-                <span>Updated {getTimeAgo(vehicle.lastUpdate)}</span>
-              </div>
-            </div>
-          </Popup>
-        </Marker>
-      {/if}
-    {/each}
   </MapLibre>
 
   <BottomSheet {routes} {selectedRoute} onRouteSelect={handleRouteSelect} />
@@ -416,366 +449,368 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
 
-  /* ====== PIN-STYLE VEHICLE MARKERS ====== */
-  :global(.custom-vehicle-marker) {
-    cursor: pointer;
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-    transition: all 0.2s ease;
-  }
-
-  :global(.custom-vehicle-marker:hover) {
-    filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
-    transform: translateY(-2px);
-  }
-
-  :global(.pin-marker) {
-    position: relative;
-    width: 36px;
-    height: 44px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  :global(.pin-circle) {
-    width: 36px;
-    height: 36px;
-    background: var(--marker-color);
-    border-radius: 50% 50% 50% 0;
-    transform: rotate(-45deg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2.5px solid white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  }
-
-  :global(.pin-circle svg) {
-    transform: rotate(45deg);
-    color: white;
-    width: 18px;
-    height: 18px;
-  }
-
-  :global(.pin-point) {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 8px solid var(--marker-color);
-  }
-
-  /* ====== PIN-STYLE TERMINAL MARKERS ====== */
-  :global(.custom-terminal-marker) {
-    cursor: pointer;
-    transition: all 0.2s ease;
-    filter: drop-shadow(0 4px 8px rgba(233, 196, 106, 0.3));
-  }
-
-  :global(.custom-terminal-marker:hover) {
-    transform: translateY(-2px);
-    filter: drop-shadow(0 6px 12px rgba(233, 196, 106, 0.4));
-  }
-
-  :global(.terminal-pin-marker) {
-    position: relative;
-    width: 36px;
-    height: 44px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  :global(.terminal-pulse) {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 36px;
-    height: 36px;
-    background: #e9c46a;
-    border-radius: 50% 50% 50% 0;
-    transform: rotate(-45deg);
-    opacity: 0.4;
-    animation: pulse-terminal 2s ease-out infinite;
-  }
-
-  @keyframes pulse-terminal {
-    0% {
-      transform: rotate(-45deg) scale(0.9);
-      opacity: 0.6;
+  :global {
+    /* ====== PIN-STYLE VEHICLE MARKERS ====== */
+    .custom-vehicle-marker {
+      cursor: pointer;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+      transition: all 0.2s ease;
     }
-    100% {
-      transform: rotate(-45deg) scale(1.3);
-      opacity: 0;
+
+    .custom-vehicle-marker:hover {
+      filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
+      transform: translateY(-2px);
     }
-  }
 
-  :global(.terminal-circle) {
-    position: relative;
-    width: 36px;
-    height: 36px;
-    background: #e9c46a;
-    border-radius: 50% 50% 50% 0;
-    transform: rotate(-45deg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2.5px solid white;
-    box-shadow: 0 2px 8px rgba(233, 196, 106, 0.3);
-    z-index: 1;
-  }
+    .pin-marker {
+      position: relative;
+      width: 36px;
+      height: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
 
-  :global(.terminal-circle svg) {
-    transform: rotate(45deg);
-    color: #000;
-    width: 18px;
-    height: 18px;
-  }
+    .pin-circle {
+      width: 36px;
+      height: 36px;
+      background: var(--marker-color);
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2.5px solid white;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
 
-  :global(.terminal-point) {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 8px solid #e9c46a;
-    z-index: 1;
-  }
+    .pin-circle svg {
+      transform: rotate(45deg);
+      color: white;
+      width: 18px;
+      height: 18px;
+    }
 
-  /* ====== POPUP STYLES ====== */
-  :global(.maplibregl-popup-content) {
-    background: rgba(20, 20, 20, 0.98) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    border-radius: 16px !important;
-    padding: 0 !important;
-    box-shadow:
-      0 12px 32px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(255, 255, 255, 0.05) !important;
-    min-width: 300px !important;
-    backdrop-filter: blur(24px);
-  }
+    .pin-point {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 8px solid var(--marker-color);
+    }
 
-  :global(.maplibregl-popup-tip) {
-    border-top-color: rgba(20, 20, 20, 0.98) !important;
-  }
+    /* ====== PIN-STYLE TERMINAL MARKERS ====== */
+    .custom-terminal-marker {
+      cursor: pointer;
+      transition: all 0.2s ease;
+      filter: drop-shadow(0 4px 8px rgba(233, 196, 106, 0.3));
+    }
 
-  :global(.maplibregl-popup-close-button) {
-    color: rgba(255, 255, 255, 0.5) !important;
-    font-size: 20px !important;
-    width: 28px !important;
-    height: 28px !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    right: 12px !important;
-    top: 12px !important;
-    border-radius: 6px !important;
-    transition: all 0.2s ease !important;
-  }
+    .custom-terminal-marker:hover {
+      transform: translateY(-2px);
+      filter: drop-shadow(0 6px 12px rgba(233, 196, 106, 0.4));
+    }
 
-  :global(.maplibregl-popup-close-button:hover) {
-    background: rgba(255, 255, 255, 0.1) !important;
-    color: #fff !important;
-    transform: scale(1.1) !important;
-  }
+    .terminal-pin-marker {
+      position: relative;
+      width: 36px;
+      height: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
 
-  :global(.maplibregl-popup-close-button:active) {
-    transform: scale(0.95) !important;
-  }
+    .terminal-pulse {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 36px;
+      height: 36px;
+      background: #e9c46a;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      opacity: 0.4;
+      animation: pulse-terminal 2s ease-out infinite;
+    }
 
-  /* Terminal Popup */
-  .terminal-popup {
-    padding: 1.25rem;
-    color: #fff;
-  }
+    @keyframes pulse-terminal {
+      0% {
+        transform: rotate(-45deg) scale(0.9);
+        opacity: 0.6;
+      }
+      100% {
+        transform: rotate(-45deg) scale(1.3);
+        opacity: 0;
+      }
+    }
 
-  .popup-badge {
-    display: inline-block;
-    font-size: 0.625rem;
-    font-weight: 800;
-    padding: 0.375rem 0.75rem;
-    background: linear-gradient(135deg, #e9c46a 0%, #f4a261 100%);
-    color: #000;
-    border-radius: 8px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    margin-bottom: 0.75rem;
-  }
+    .terminal-circle {
+      position: relative;
+      width: 36px;
+      height: 36px;
+      background: #e9c46a;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2.5px solid white;
+      box-shadow: 0 2px 8px rgba(233, 196, 106, 0.3);
+      z-index: 1;
+    }
 
-  .terminal-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #fff;
-    margin: 0 0 0.5rem 0;
-    line-height: 1.3;
-  }
+    .terminal-circle svg {
+      transform: rotate(45deg);
+      color: #000;
+      width: 18px;
+      height: 18px;
+    }
 
-  .terminal-address {
-    font-size: 0.875rem;
-    color: rgba(255, 255, 255, 0.6);
-    margin: 0 0 1rem 0;
-    line-height: 1.5;
-  }
+    .terminal-point {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 8px solid #e9c46a;
+      z-index: 1;
+    }
 
-  .routes-section {
-    padding-top: 1rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-  }
+    /* ====== POPUP STYLES ====== */
+    .maplibregl-popup-content {
+      background: rgba(20, 20, 20, 0.98) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 16px !important;
+      padding: 0 !important;
+      box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+      min-width: 300px !important;
+      backdrop-filter: blur(24px);
+    }
 
-  .section-label {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.5);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    display: block;
-    margin-bottom: 0.625rem;
-  }
+    .maplibregl-popup-tip {
+      border-top-color: rgba(20, 20, 20, 0.98) !important;
+    }
 
-  .route-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
+    .maplibregl-popup-close-button {
+      color: rgba(255, 255, 255, 0.5) !important;
+      font-size: 20px !important;
+      width: 28px !important;
+      height: 28px !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      right: 12px !important;
+      top: 12px !important;
+      border-radius: 6px !important;
+      transition: all 0.2s ease !important;
+    }
 
-  .route-pill {
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.375rem 0.75rem;
-    background: rgba(42, 157, 143, 0.2);
-    color: #2a9d8f;
-    border: 1px solid rgba(42, 157, 143, 0.3);
-    border-radius: 8px;
-    letter-spacing: 0.5px;
-  }
+    .maplibregl-popup-close-button:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: #fff !important;
+      transform: scale(1.1) !important;
+    }
 
-  /* Vehicle Popup */
-  .vehicle-popup {
-    padding: 1.25rem;
-    color: #fff;
-  }
+    .maplibregl-popup-close-button:active {
+      transform: scale(0.95) !important;
+    }
 
-  .popup-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    gap: 0.75rem;
-  }
+    /* Terminal Popup */
+    .terminal-popup {
+      padding: 1.25rem;
+      color: #fff;
+    }
 
-  .vehicle-badge {
-    font-size: 0.625rem;
-    font-weight: 800;
-    padding: 0.375rem 0.75rem;
-    background: rgba(42, 157, 143, 0.2);
-    color: #2a9d8f;
-    border: 1px solid rgba(42, 157, 143, 0.3);
-    border-radius: 8px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
+    .popup-badge {
+      display: inline-block;
+      font-size: 0.625rem;
+      font-weight: 800;
+      padding: 0.375rem 0.75rem;
+      background: linear-gradient(135deg, #e9c46a 0%, #f4a261 100%);
+      color: #000;
+      border-radius: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
 
-  .plate-badge {
-    font-size: 1rem;
-    font-weight: 700;
-    padding-top: 1rem;
-    color: #fff;
-    font-family: "Courier New", monospace;
-    letter-spacing: 1px;
-  }
+    .terminal-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 0 0 0.5rem 0;
+      line-height: 1.3;
+    }
 
-  .route-section {
-    display: flex;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
+    .terminal-address {
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin: 0 0 1rem 0;
+      line-height: 1.5;
+    }
 
-  .route-color-bar {
-    width: 4px;
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
+    .routes-section {
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-  .route-details {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.5);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 0.625rem;
+    }
 
-  .route-code-badge {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.9);
-    letter-spacing: 0.5px;
-  }
+    .route-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
 
-  .route-name-text {
-    font-size: 0.9375rem;
-    color: rgba(255, 255, 255, 0.7);
-    line-height: 1.4;
-  }
+    .route-pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.375rem 0.75rem;
+      background: rgba(42, 157, 143, 0.2);
+      color: #2a9d8f;
+      border: 1px solid rgba(42, 157, 143, 0.3);
+      border-radius: 8px;
+      letter-spacing: 0.5px;
+    }
 
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
+    /* Vehicle Popup */
+    .vehicle-popup {
+      padding: 1.25rem;
+      color: #fff;
+    }
 
-  .stat-item {
-    display: flex;
-    gap: 0.625rem;
-    align-items: flex-start;
-  }
+    .popup-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      gap: 0.75rem;
+    }
 
-  .stat-item :global(svg) {
-    color: rgba(255, 255, 255, 0.4);
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
+    .vehicle-badge {
+      font-size: 0.625rem;
+      font-weight: 800;
+      padding: 0.375rem 0.75rem;
+      background: rgba(42, 157, 143, 0.2);
+      color: #2a9d8f;
+      border: 1px solid rgba(42, 157, 143, 0.3);
+      border-radius: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
 
-  .stat-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
+    .plate-badge {
+      font-size: 1rem;
+      font-weight: 700;
+      padding-top: 1rem;
+      color: #fff;
+      font-family: "Courier New", monospace;
+      letter-spacing: 1px;
+    }
 
-  .stat-label {
-    font-size: 0.6875rem;
-    color: rgba(255, 255, 255, 0.5);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-  }
+    .route-section {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-  .stat-value {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: #fff;
-  }
+    .route-color-bar {
+      width: 4px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
 
-  .popup-footer {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    font-size: 0.8125rem;
-    color: rgba(255, 255, 255, 0.4);
-  }
+    .route-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
 
-  .popup-footer :global(svg) {
-    flex-shrink: 0;
+    .route-code-badge {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.9);
+      letter-spacing: 0.5px;
+    }
+
+    .route-name-text {
+      font-size: 0.9375rem;
+      color: rgba(255, 255, 255, 0.7);
+      line-height: 1.4;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .stat-item {
+      display: flex;
+      gap: 0.625rem;
+      align-items: flex-start;
+    }
+
+    .stat-item svg {
+      color: rgba(255, 255, 255, 0.4);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .stat-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .stat-label {
+      font-size: 0.6875rem;
+      color: rgba(255, 255, 255, 0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .popup-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.8125rem;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .popup-footer svg {
+      flex-shrink: 0;
+    }
   }
 </style>

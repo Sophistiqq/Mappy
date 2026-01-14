@@ -1,3 +1,15 @@
+:root {
+  --charcoal-blue: #264653ff;
+  --verdigris: #2a9d8fff;
+  --tuscan-sun: #e9c46aff;
+  --sandy-brown: #f4a261ff;
+  --burnt-peach: #e76f51ff;
+  -tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent;
+
+  color-scheme: dark;
+}
+
 * {
   padding: 0;
   margin: 0;

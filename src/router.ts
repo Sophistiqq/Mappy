@@ -1,20 +1,28 @@
 import { createRouter } from 'sv-router';
 import GettingStarted from "./routes/GettingStarted.svelte"
 import Home from './routes/Home.svelte';
-import { AuthManager } from './auth';
+import { auth } from './auth.svelte';
 import Login from './routes/Login.svelte';
 
-const setupState: string | null = localStorage.getItem('setupState')
-
-const auth = new AuthManager
+// Helper to check setup state dynamically
+function isSetupComplete(): boolean {
+  return localStorage.getItem('setupState') === 'done'
+}
 
 export const { p, navigate, isActive, route } = createRouter({
   '/': {
     '/': GettingStarted,
     hooks: {
       async beforeLoad() {
-        if (setupState === 'done') {
-          throw navigate('/home')
+        // Check dynamically instead of module scope
+        if (isSetupComplete()) {
+          // Check if user is already authenticated
+          const isAuthenticated = await auth.checkAuth()
+          if (isAuthenticated) {
+            throw navigate('/home')
+          } else {
+            throw navigate('/login')
+          }
         }
       }
     }
@@ -23,12 +31,34 @@ export const { p, navigate, isActive, route } = createRouter({
     '/': Home,
     hooks: {
       async beforeLoad() {
-        const status = await auth.checkAuth()
+        // Redirect to setup if not complete
+        if (!isSetupComplete()) {
+          throw navigate('/')
+        }
+
+        // Redirect to login if not authenticated
+        const isAuthenticated = await auth.checkAuth()
+        if (!isAuthenticated) {
+          throw navigate('/login')
+        }
       }
     }
   },
   '/login': {
-    '/': Login
-  },
+    '/': Login,
+    hooks: {
+      async beforeLoad() {
+        // Redirect to setup if not complete
+        if (!isSetupComplete()) {
+          throw navigate('/')
+        }
 
+        // Redirect to home if already authenticated
+        const isAuthenticated = await auth.checkAuth()
+        if (isAuthenticated) {
+          throw navigate('/home')
+        }
+      }
+    }
+  },
 });

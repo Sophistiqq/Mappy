@@ -1,18 +1,33 @@
 <script lang="ts">
   import { Router } from "sv-router";
   import "./router.ts";
-  import { onMount } from "svelte";
+  import { route } from "./router";
   import Topbar from "./lib/Topbar.svelte";
-  let setupState: string | null;
-  onMount(() => {
-    setupState = localStorage.getItem("setupState");
-    console.log(setupState);
-  });
+
+  // Read setup state directly - no need for onMount
+  let setupState = $state(localStorage.getItem("setupState"));
+
+  // Optional: Listen for storage changes across tabs
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", (e) => {
+      if (e.key === "setupState") {
+        setupState = e.newValue;
+      }
+    });
+  }
+
+  // Routes where topbar should be hidden
+  const hideTopbarRoutes = ["/login", "/"];
+
+  // Reactive check for showing topbar
+  let showTopbar = $derived(
+    setupState === "done" && !hideTopbarRoutes.includes(route.pathname),
+  );
 </script>
 
 <main>
-  {#if setupState == "done"}
+  {#if showTopbar}
     <Topbar />
   {/if}
-  <Router base="/" />
+  <Router />
 </main>

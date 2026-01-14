@@ -1,0 +1,14 @@
+.git
+.vscode
+public
+.gitignore
+bun.lockb
+codebase.md
+index.html
+package.json
+pwa-assets.config.ts
+svelte.config.js
+tsconfig.app.json
+tsconfig.json
+tsconfig.node.json
+vite.config.ts

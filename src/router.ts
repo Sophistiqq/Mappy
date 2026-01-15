@@ -7,6 +7,7 @@ import CreateAccount from './routes/CreateAccount.svelte';
 
 // Helper to check setup state dynamically
 function isSetupComplete(): boolean {
+  if (typeof window === 'undefined') return false;
   return localStorage.getItem('setupState') === 'done'
 }
 

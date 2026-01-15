@@ -5,7 +5,9 @@
   import Topbar from "./lib/Topbar.svelte";
 
   // Read setup state directly - no need for onMount
-  let setupState = $state(localStorage.getItem("setupState"));
+  let setupState = $state(
+    typeof window !== 'undefined' ? localStorage.getItem("setupState") : null
+  );
 
   // Optional: Listen for storage changes across tabs
   if (typeof window !== "undefined") {

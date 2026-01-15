@@ -1,3 +1,102 @@
+# .gemini/settings.json
+
+```json
+{
+	"$schema": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/schemas/settings.schema.json",
+	"mcpServers": {
+		"svelte": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@sveltejs/mcp"
+			]
+		}
+	}
+}
+
+```
+
+# GEMINI.md
+
+```md
+You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
+
+## Available MCP Tools:
+
+### 1. list-sections
+
+Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
+When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
+
+### 2. get-documentation
+
+Retrieves full documentation content for specific sections. Accepts single or multiple sections.
+After calling the list-sections tool, you MUST analyze the returned documentation sections (especially the use_cases field) and then use the get-documentation tool to fetch ALL documentation sections that are relevant for the user's task.
+
+### 3. svelte-autofixer
+
+Analyzes Svelte code and returns issues and suggestions.
+You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
+
+### 4. playground-link
+
+Generates a Svelte Playground link with the provided code.
+After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
+
+```
+
+# README.md
+
+```md
+# Svelte + TS + Vite
+
+This template should help get you started developing with Svelte and TypeScript in Vite.
+
+## Recommended IDE Setup
+
+[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+
+## Need an official Svelte framework?
+
+Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+
+## Technical considerations
+
+**Why use this over SvelteKit?**
+
+- It brings its own routing solution which might not be preferable for some users.
+- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+
+This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+
+Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
+
+**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
+
+Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
+
+**Why include `.vscode/extensions.json`?**
+
+Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
+
+**Why enable `allowJs` in the TS template?**
+
+While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
+
+**Why is HMR not preserving my local component state?**
+
+HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
+
+If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
+
+\`\`\`ts
+// store.ts
+// An extremely simple external store
+import { writable } from 'svelte/store'
+export default writable(0)
+\`\`\`
+
+```
 
 # src/app.css
 
@@ -54,7 +153,7 @@ a {
   }
 
   // Routes where topbar should be hidden
-  const hideTopbarRoutes = ["/login", "/"];
+  const hideTopbarRoutes = ["/login", "/", "/create-account"];
 
   // Reactive check for showing topbar
   let showTopbar = $derived(
@@ -131,6 +230,47 @@ class AuthManager {
       console.error('Login error:', error)
       this.state.loading = false
       return { success: false, error: 'Network error' }
+    }
+  }
+
+  async register(
+    username: string,
+    password: string,
+    email: string,
+    first_name: string,
+    last_name: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.state.loading = true;
+
+      const res = await fetch(`${url}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username,
+          password,
+          email,
+          first_name,
+          last_name
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        this.state.loading = false;
+        return { success: false, error: errorData.message || 'Registration failed' };
+      }
+
+      // After successful registration, fetch user details
+      await this.fetchUser();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Registration error:', error);
+      this.state.loading = false;
+      return { success: false, error: 'Network error' };
     }
   }
 
@@ -228,6 +368,525 @@ export const auth = new AuthManager()
 
 ```
 
+# src/lib/BottomSheet.svelte
+
+```svelte
+<script lang="ts">
+  import {
+    ChevronUp,
+    ChevronDown,
+    Search,
+    Navigation,
+    Clock,
+    X,
+    Check,
+  } from "lucide-svelte";
+
+  interface Route {
+    id: number;
+    name: string;
+    code: string;
+    color: string | null;
+    fare: number;
+    vehicleCount?: number;
+  }
+
+  interface Props {
+    routes: Route[];
+    selectedRoute: number | null;
+    onRouteSelect: (routeId: number | null) => void;
+  }
+
+  let { routes, selectedRoute, onRouteSelect }: Props = $props();
+
+  let isExpanded = $state(false);
+  let searchQuery = $state("");
+
+  // Filter routes based on search
+  const filteredRoutes = $derived(
+    routes.filter(
+      (route) =>
+        route.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        route.code.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
+  );
+
+  function toggleSheet() {
+    isExpanded = !isExpanded;
+  }
+
+  function selectRoute(routeId: number) {
+    if (selectedRoute === routeId) {
+      onRouteSelect(null);
+    } else {
+      onRouteSelect(routeId);
+    }
+  }
+
+  function clearSearch() {
+    searchQuery = "";
+  }
+</script>
+
+<div class="bottom-sheet" class:expanded={isExpanded}>
+  <!-- Handle bar -->
+  <button type="button" class="sheet-handle" onclick={toggleSheet}>
+    <div class="handle-bar"></div>
+    <div class="handle-content">
+      {#if isExpanded}
+        <ChevronDown size={20} strokeWidth={2.5} />
+        <span>Hide Routes</span>
+      {:else}
+        <ChevronUp size={20} strokeWidth={2.5} />
+        <span>View All Routes ({routes.length})</span>
+      {/if}
+    </div>
+  </button>
+
+  <!-- Sheet content -->
+  <div class="sheet-content">
+    <!-- Header with search -->
+    <div class="sheet-header">
+      <h3 class="sheet-title">Routes</h3>
+      <div class="search-bar">
+        <Search size={18} strokeWidth={2} />
+        <input
+          type="text"
+          placeholder="Search by route code or name..."
+          bind:value={searchQuery}
+        />
+        {#if searchQuery}
+          <button type="button" class="clear-btn" onclick={clearSearch}>
+            <X size={16} strokeWidth={2} />
+          </button>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Selected route indicator -->
+    {#if selectedRoute !== null}
+      {@const route = routes.find((r) => r.id === selectedRoute)}
+      {#if route}
+        <div class="selected-indicator">
+          <div class="selected-content">
+            <div
+              class="selected-color"
+              style:background={route.color || "#2a9d8f"}
+            ></div>
+            <span class="selected-text"
+              >Showing: <strong>{route.code}</strong></span
+            >
+          </div>
+          <button
+            type="button"
+            class="clear-filter"
+            onclick={() => onRouteSelect(null)}
+          >
+            Clear
+          </button>
+        </div>
+      {/if}
+    {/if}
+
+    <!-- Routes list -->
+    <div class="routes-list">
+      {#each filteredRoutes as route (route.id)}
+        <button
+          type="button"
+          class="route-card"
+          class:selected={selectedRoute === route.id}
+          onclick={() => selectRoute(route.id)}
+        >
+          <div
+            class="route-indicator"
+            style:background={route.color || "#2a9d8f"}
+          ></div>
+
+          <div class="route-info">
+            <div class="route-header">
+              <span class="route-code">{route.code}</span>
+              <span class="route-fare">₱{route.fare.toFixed(2)}</span>
+            </div>
+            <h4 class="route-name">{route.name}</h4>
+
+            <div class="route-stats">
+              <div class="stat">
+                <Navigation size={14} strokeWidth={2} />
+                <span>{route.vehicleCount || 0} active</span>
+              </div>
+              <div class="stat">
+                <Clock size={14} strokeWidth={2} />
+                <span>~5-10 min</span>
+              </div>
+            </div>
+          </div>
+
+          {#if selectedRoute === route.id}
+            <div class="selected-badge">
+              <Check size={14} />
+            </div>
+          {/if}
+        </button>
+      {/each}
+
+      {#if filteredRoutes.length === 0}
+        <div class="empty-state">
+          <Search size={32} strokeWidth={1.5} />
+          <p>No routes found</p>
+          <span class="empty-hint">Try searching for a different route</span>
+        </div>
+      {/if}
+    </div>
+  </div>
+</div>
+
+<style>
+  .bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: linear-gradient(
+      180deg,
+      rgba(20, 20, 20, 0.98) 0%,
+      rgba(10, 10, 10, 0.98) 100%
+    );
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(24px);
+    transform: translateY(calc(100% - 5rem));
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bottom-sheet.expanded {
+    transform: translateY(0);
+  }
+
+  .sheet-handle {
+    width: 100%;
+    padding: 1rem 1.5rem 0.75rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+    transition: opacity 0.2s;
+  }
+
+  .sheet-handle:active {
+    opacity: 0.7;
+  }
+
+  .handle-bar {
+    width: 3rem;
+    height: 0.25rem;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    transition: all 0.2s;
+  }
+
+  .sheet-handle:hover .handle-bar {
+    background: rgba(255, 255, 255, 0.35);
+    width: 3.5rem;
+  }
+
+  .handle-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: color 0.2s;
+  }
+
+  .sheet-handle:hover .handle-content {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .sheet-content {
+    padding: 1rem 1.5rem 2rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sheet-content::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .sheet-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+  }
+
+  .sheet-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
+  .sheet-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .sheet-header {
+    margin-bottom: 1rem;
+  }
+
+  .sheet-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 1rem 0;
+  }
+
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    transition: all 0.2s;
+  }
+
+  .search-bar:focus-within {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(42, 157, 143, 0.5);
+    box-shadow: 0 0 0 3px rgba(42, 157, 143, 0.1);
+  }
+
+  .search-bar input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 0.9375rem;
+    font-family: inherit;
+  }
+
+  .search-bar input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .clear-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.6);
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .clear-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+  }
+
+  .selected-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: rgba(42, 157, 143, 0.1);
+    border: 1px solid rgba(42, 157, 143, 0.3);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+  }
+
+  .selected-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .selected-color {
+    width: 4px;
+    height: 24px;
+    border-radius: 2px;
+  }
+
+  .selected-text {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .selected-text strong {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .clear-filter {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 0.375rem 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+
+  .clear-filter:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #fff;
+  }
+
+  .routes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .route-card {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    font-family: inherit;
+    position: relative;
+  }
+
+  .route-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .route-card:active {
+    transform: translateY(0);
+  }
+
+  .route-card.selected {
+    background: rgba(42, 157, 143, 0.12);
+    border-color: rgba(42, 157, 143, 0.4);
+  }
+
+  .route-indicator {
+    width: 0.375rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .route-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .route-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .route-code {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 0.25rem 0.625rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.5px;
+  }
+
+  .route-fare {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #e9c46a;
+  }
+
+  .route-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .route-stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .selected-badge {
+    position: absolute;
+    top: 3rem;
+    right: 1rem;
+    width: 24px;
+    height: 24px;
+    background: #2a9d8f;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: rgba(255, 255, 255, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .empty-state p {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .empty-hint {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.3);
+  }
+</style>
+
+```
+
 # src/lib/Map.svelte
 
 ```svelte
@@ -237,58 +896,128 @@ export const auth = new AuthManager()
     NavigationControl,
     ScaleControl,
     GeolocateControl,
-    Marker,
-    Popup,
   } from "svelte-maplibre-gl";
+  import maplibregl from "maplibre-gl";
   import { onMount, onDestroy } from "svelte";
   import { vehicleStream } from "./vehicleStream.svelte";
+  import BottomSheet from "./BottomSheet.svelte";
+  import MarkerPopup from "./MarkerPopup.svelte";
+
+  let map: maplibregl.Map | any = $state(null);
 
   // Montalban, Rizal coordinates
   const montalbanCenter = { lng: 121.1394, lat: 14.7306 };
 
   // Use OpenFreeMap's Liberty style (free, no API key needed)
-  const mapStyle = "https://tiles.openfreemap.org/styles/liberty";
+  const mapStyle = "https://tiles.openfreemap.org/styles/dark";
 
-  onMount(() => {
-    // Connect to vehicle stream when component mounts
-    vehicleStream.connect();
-  });
+  const url = import.meta.env.VITE_URL;
 
-  onDestroy(() => {
-    // Disconnect when component unmounts
-    vehicleStream.disconnect();
-  });
+  // State for routes and terminals
+  let routes = $state<any[]>([]);
+  let terminals = $state<any[]>([]);
+  let selectedRoute = $state<number | null>(null);
 
-  // Helper function to get vehicle icon based on type
-  function getVehicleIcon(type: string) {
-    switch (type) {
-      case "jeepney":
-        return "🚐";
-      case "uv_express":
-        return "🚙";
-      case "bus":
-        return "🚌";
-      default:
-        return "🚗";
+  // Fetch routes and terminals
+  async function fetchData() {
+    try {
+      const [routesRes, terminalsRes] = await Promise.all([
+        fetch(`${url}/routes`),
+        fetch(`${url}/terminals`),
+      ]);
+
+      if (routesRes.ok) {
+        const routesData = await routesRes.json();
+        routes = routesData.map((route: any) => ({
+          ...route,
+          vehicleCount: route.vehicles?.length || 0,
+        }));
+      }
+
+      if (terminalsRes.ok) {
+        terminals = await terminalsRes.json();
+      }
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
     }
   }
 
-  // Get time ago string
-  function getTimeAgo(timestamp: string | null) {
-    if (!timestamp) return "Unknown";
-    const now = new Date();
-    const then = new Date(timestamp);
-    const diffMs = now.getTime() - then.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
+  onMount(() => {
+    vehicleStream.connect();
+    fetchData();
+  });
 
-    if (diffMins < 1) return "Just now";
-    if (diffMins === 1) return "1 min ago";
-    if (diffMins < 60) return `${diffMins} mins ago`;
+  onDestroy(() => {
+    vehicleStream.disconnect();
+  });
 
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours === 1) return "1 hour ago";
-    return `${diffHours} hours ago`;
+  // Filter vehicles by selected route
+  const displayedVehicles = $derived(
+    selectedRoute
+      ? vehicleStream.vehicles.filter((v) => v.route?.id === selectedRoute)
+      : vehicleStream.vehicles,
+  );
+
+  function handleRouteSelect(routeId: number | null) {
+    selectedRoute = routeId;
   }
+
+  function createTerminalMarkerEl(_terminal: any) {
+    const el = document.createElement("div");
+    el.className = "custom-terminal-marker";
+
+    el.innerHTML = `
+      <div class="terminal-pin-marker">
+        <div class="terminal-pulse"></div>
+        <div class="terminal-circle">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+        </div>
+        <div class="terminal-point"></div>
+      </div>
+    `;
+
+    return el;
+  }
+
+  // Terminal markers
+  $effect(() => {
+    if (map && terminals.length > 0) {
+      for (const terminal of terminals) {
+        if (terminal.latitude && terminal.longitude) {
+          const popup = new maplibregl.Popup({
+            offset: [0, -35],
+            closeButton: true,
+          }).setHTML(`
+            <div class="terminal-popup">
+              <div class="popup-badge">TERMINAL</div>
+              <h3 class="terminal-title">${terminal.name}</h3>
+              ${terminal.address ? `<p class="terminal-address">${terminal.address}</p>` : ""}
+              ${
+                terminal.routeStops && terminal.routeStops.length > 0
+                  ? `
+                <div class="routes-section">
+                  <span class="section-label">ROUTES:</span>
+                  <div class="route-pills">
+                    ${terminal.routeStops.map((stop: any) => `<span class="route-pill">${stop.route.code}</span>`).join("")}
+                  </div>
+                </div>
+              `
+                  : ""
+              }
+            </div>
+          `);
+
+          new maplibregl.Marker({ element: createTerminalMarkerEl(terminal) })
+            .setLngLat([terminal.longitude, terminal.latitude])
+            .setPopup(popup)
+            .addTo(map);
+        }
+      }
+    }
+  });
 </script>
 
 <div class="map-container">
@@ -301,7 +1030,7 @@ export const auth = new AuthManager()
   {:else}
     <div class="status-indicator connected">
       <div class="pulse-dot"></div>
-      <span>Live • {vehicleStream.vehicles.length} vehicles</span>
+      <span>Live • {displayedVehicles.length} vehicles</span>
     </div>
   {/if}
 
@@ -312,6 +1041,7 @@ export const auth = new AuthManager()
   {/if}
 
   <MapLibre
+    bind:map
     class="map"
     style={mapStyle}
     zoom={13}
@@ -326,69 +1056,20 @@ export const auth = new AuthManager()
       showUserLocation={true}
     />
 
-    <!-- Render vehicle markers -->
-    {#each vehicleStream.vehicles as vehicle (vehicle.id)}
-      {#if vehicle.currentLat && vehicle.currentLng}
-        <Marker lnglat={[vehicle.currentLng, vehicle.currentLat]}>
-          <div
-            class="vehicle-marker"
-            style="--route-color: {vehicle.route?.color || '#2a9d8f'}"
-            style:transform="rotate({vehicle.heading || 0}deg)"
-          >
-            <span class="vehicle-icon">{getVehicleIcon(vehicle.type)}</span>
-          </div>
-
-          <Popup offset={[0, -15]}>
-            <div class="vehicle-popup">
-              <div class="popup-header">
-                <span class="vehicle-type-badge"
-                  >{vehicle.type.replace("_", " ").toUpperCase()}</span
-                >
-                <span class="plate-number">{vehicle.plateNumber}</span>
-              </div>
-
-              {#if vehicle.route}
-                <div class="route-info">
-                  <div
-                    class="route-badge"
-                    style="background: {vehicle.route.color || '#2a9d8f'}"
-                  >
-                    {vehicle.route.code}
-                  </div>
-                  <span class="route-name">{vehicle.route.name}</span>
-                </div>
-              {/if}
-
-              <div class="vehicle-stats">
-                {#if vehicle.speed !== null}
-                  <div class="stat">
-                    <span class="stat-label">Speed</span>
-                    <span class="stat-value"
-                      >{Math.round(vehicle.speed)} km/h</span
-                    >
-                  </div>
-                {/if}
-                <div class="stat">
-                  <span class="stat-label">Capacity</span>
-                  <span class="stat-value">{vehicle.capacity} seats</span>
-                </div>
-              </div>
-
-              <div class="last-update">
-                Updated {getTimeAgo(vehicle.lastUpdate)}
-              </div>
-            </div>
-          </Popup>
-        </Marker>
-      {/if}
+    {#each displayedVehicles as vehicle (vehicle.id)}
+      {#key vehicle.id}
+        <MarkerPopup {vehicle} />
+      {/key}
     {/each}
   </MapLibre>
+
+  <BottomSheet {routes} {selectedRoute} onRouteSelect={handleRouteSelect} />
 </div>
 
 <style>
   .map-container {
     width: 100%;
-    height: calc(100svh - 4.5rem); /* Account for topbar */
+    height: calc(100svh - 4.5rem);
     position: relative;
     overflow: hidden;
   }
@@ -398,7 +1079,7 @@ export const auth = new AuthManager()
     height: 100%;
   }
 
-  /* Customize MapLibre controls for dark theme */
+  /* MapLibre controls */
   :global(.maplibregl-ctrl-group) {
     background: rgba(26, 26, 26, 0.95) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -426,11 +1107,6 @@ export const auth = new AuthManager()
     background: rgba(255, 255, 255, 0.08) !important;
   }
 
-  :global(.maplibregl-ctrl-group button:active) {
-    background: rgba(255, 255, 255, 0.12) !important;
-  }
-
-  /* Scale control styling */
   :global(.maplibregl-ctrl-scale) {
     background: rgba(26, 26, 26, 0.8) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -442,28 +1118,12 @@ export const auth = new AuthManager()
     backdrop-filter: blur(10px);
   }
 
-  /* Geolocation control active state */
-  :global(.maplibregl-ctrl-geolocate-active) {
-    background: rgba(42, 157, 143, 0.2) !important;
-  }
-
-  :global(.maplibregl-ctrl-geolocate-active .maplibregl-ctrl-icon) {
-    filter: invert(0.7) sepia(1) saturate(3) hue-rotate(130deg) brightness(0.9);
-  }
-
-  /* User location dot */
   :global(.maplibregl-user-location-dot) {
-    background: var(--verdigris);
+    background: #2a9d8f;
     border: 3px solid #fff;
     box-shadow: 0 0 12px rgba(42, 157, 143, 0.5);
   }
 
-  :global(.maplibregl-user-location-accuracy-circle) {
-    background: rgba(42, 157, 143, 0.15);
-    border: 1px solid rgba(42, 157, 143, 0.3);
-  }
-
-  /* Remove default attribution (we'll add custom one) */
   :global(.maplibregl-ctrl-bottom-right) {
     display: none;
   }
@@ -499,10 +1159,17 @@ export const auth = new AuthManager()
   .spinner-small {
     width: 1rem;
     height: 1rem;
+    aspect-ratio: 1/1;
     border: 2px solid rgba(0, 0, 0, 0.2);
     border-top-color: #000;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .pulse-dot {
@@ -539,133 +1206,502 @@ export const auth = new AuthManager()
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
 
-  /* Vehicle marker */
-  :global(.vehicle-marker) {
-    width: 3rem;
-    height: 3rem;
-    background: var(--route-color, #2a9d8f);
-    border: 3px solid #fff;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    transition:
-      transform 0.2s,
-      box-shadow 0.2s;
-  }
+  :global {
+    /* ====== PIN-STYLE VEHICLE MARKERS ====== */
+    .custom-vehicle-marker {
+      cursor: pointer;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+      transition: all 0.2s ease;
+    }
 
-  :global(.vehicle-marker:hover) {
-    transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
-  }
+    .custom-vehicle-marker:hover {
+      filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
+      transform: translateY(-2px);
+    }
 
-  :global(.vehicle-marker .vehicle-icon) {
-    font-size: 1.5rem;
-    line-height: 1;
-  }
+    .pin-marker {
+      position: relative;
+      width: 36px;
+      height: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
 
-  /* Popup styling */
-  :global(.maplibregl-popup-content) {
-    background: rgba(26, 26, 26, 0.98) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 16px !important;
-    padding: 0 !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-    min-width: 280px !important;
-    backdrop-filter: blur(20px);
-  }
+    .pin-circle {
+      width: 36px;
+      height: 36px;
+      background: var(--marker-color);
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2.5px solid white;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
 
-  :global(.maplibregl-popup-tip) {
-    border-top-color: rgba(26, 26, 26, 0.98) !important;
-  }
+    .pin-circle svg {
+      transform: rotate(45deg);
+      color: white;
+      width: 18px;
+      height: 18px;
+    }
 
-  .vehicle-popup {
-    padding: 1rem;
-    color: #fff;
-  }
+    .pin-point {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 8px solid var(--marker-color);
+    }
 
-  .popup-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-  }
+    /* ====== PIN-STYLE TERMINAL MARKERS ====== */
+    .custom-terminal-marker {
+      cursor: pointer;
+      transition: all 0.2s ease;
+      filter: drop-shadow(0 4px 8px rgba(233, 196, 106, 0.3));
+    }
 
-  .vehicle-type-badge {
-    font-size: 0.625rem;
-    font-weight: 700;
-    padding: 0.25rem 0.5rem;
-    background: rgba(42, 157, 143, 0.2);
-    color: var(--verdigris);
-    border-radius: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+    .custom-terminal-marker:hover {
+      transform: translateY(-2px);
+      filter: drop-shadow(0 6px 12px rgba(233, 196, 106, 0.4));
+    }
 
-  .plate-number {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #fff;
-  }
+    .terminal-pin-marker {
+      position: relative;
+      width: 36px;
+      height: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
 
-  .route-info {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
+    .terminal-pulse {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 36px;
+      height: 36px;
+      background: #e9c46a;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      opacity: 0.4;
+      animation: pulse-terminal 2s ease-out infinite;
+    }
 
-  .route-badge {
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.25rem 0.5rem;
-    border-radius: 6px;
-    color: #fff;
-  }
+    @keyframes pulse-terminal {
+      0% {
+        transform: rotate(-45deg) scale(0.9);
+        opacity: 0.6;
+      }
+      100% {
+        transform: rotate(-45deg) scale(1.3);
+        opacity: 0;
+      }
+    }
 
-  .route-name {
-    font-size: 0.875rem;
-    color: rgba(255, 255, 255, 0.9);
-  }
+    .terminal-circle {
+      position: relative;
+      width: 36px;
+      height: 36px;
+      background: #e9c46a;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2.5px solid white;
+      box-shadow: 0 2px 8px rgba(233, 196, 106, 0.3);
+      z-index: 1;
+    }
 
-  .vehicle-stats {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
-  }
+    .terminal-circle svg {
+      transform: rotate(45deg);
+      color: #000;
+      width: 18px;
+      height: 18px;
+    }
 
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
+    .terminal-point {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 8px solid #e9c46a;
+      z-index: 1;
+    }
 
-  .stat-label {
-    font-size: 0.6875rem;
-    color: rgba(255, 255, 255, 0.5);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+    /* ====== POPUP STYLES ====== */
+    .maplibregl-popup-content {
+      background: rgba(20, 20, 20, 0.98) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 16px !important;
+      padding: 0 !important;
+      box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+      min-width: 300px !important;
+      backdrop-filter: blur(24px);
+    }
 
-  .stat-value {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #fff;
-  }
+    .maplibregl-popup-tip {
+      border-top-color: rgba(20, 20, 20, 0.98) !important;
+    }
 
-  .last-update {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.4);
-    text-align: center;
-    padding-top: 0.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    .maplibregl-popup-close-button {
+      color: rgba(255, 255, 255, 0.5) !important;
+      font-size: 20px !important;
+      width: 28px !important;
+      height: 28px !important;
+      padding: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      right: 12px !important;
+      top: 12px !important;
+      border-radius: 6px !important;
+      transition: all 0.2s ease !important;
+    }
+
+    .maplibregl-popup-close-button:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: #fff !important;
+      transform: scale(1.1) !important;
+    }
+
+    .maplibregl-popup-close-button:active {
+      transform: scale(0.95) !important;
+    }
+
+    /* Terminal Popup */
+    .terminal-popup {
+      padding: 1.25rem;
+      color: #fff;
+    }
+
+    .popup-badge {
+      display: inline-block;
+      font-size: 0.625rem;
+      font-weight: 800;
+      padding: 0.375rem 0.75rem;
+      background: linear-gradient(135deg, #e9c46a 0%, #f4a261 100%);
+      color: #000;
+      border-radius: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .terminal-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 0 0 0.5rem 0;
+      line-height: 1.3;
+    }
+
+    .terminal-address {
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin: 0 0 1rem 0;
+      line-height: 1.5;
+    }
+
+    .routes-section {
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.5);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 0.625rem;
+    }
+
+    .route-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .route-pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.375rem 0.75rem;
+      background: rgba(42, 157, 143, 0.2);
+      color: #2a9d8f;
+      border: 1px solid rgba(42, 157, 143, 0.3);
+      border-radius: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Vehicle Popup */
+    .vehicle-popup {
+      padding: 1.25rem;
+      color: #fff;
+    }
+
+    .popup-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      gap: 0.75rem;
+    }
+
+    .vehicle-badge {
+      font-size: 0.625rem;
+      font-weight: 800;
+      padding: 0.375rem 0.75rem;
+      background: rgba(42, 157, 143, 0.2);
+      color: #2a9d8f;
+      border: 1px solid rgba(42, 157, 143, 0.3);
+      border-radius: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .plate-badge {
+      font-size: 1rem;
+      font-weight: 700;
+      padding-top: 1rem;
+      color: #fff;
+      font-family: "Courier New", monospace;
+      letter-spacing: 1px;
+    }
+
+    .route-section {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .route-color-bar {
+      width: 4px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .route-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .route-code-badge {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.9);
+      letter-spacing: 0.5px;
+    }
+
+    .route-name-text {
+      font-size: 0.9375rem;
+      color: rgba(255, 255, 255, 0.7);
+      line-height: 1.4;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .stat-item {
+      display: flex;
+      gap: 0.625rem;
+      align-items: flex-start;
+    }
+
+    .stat-item svg {
+      color: rgba(255, 255, 255, 0.4);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .stat-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .stat-label {
+      font-size: 0.6875rem;
+      color: rgba(255, 255, 255, 0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .popup-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.8125rem;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .popup-footer svg {
+      flex-shrink: 0;
+    }
   }
 </style>
+
+```
+
+# src/lib/MarkerPopup.svelte
+
+```svelte
+<script lang="ts">
+  import { Marker, Popup } from "svelte-maplibre-gl";
+  import { Gauge, Users, Clock } from "lucide-svelte";
+  import type { Vehicle } from "./vehicleStream.svelte";
+
+  export let vehicle: Vehicle;
+  let markerEl: HTMLDivElement;
+
+  function getTimeAgo(timestamp: string | null) {
+    if (!timestamp) return "Unknown";
+    const now = new Date();
+    const then = new Date(timestamp);
+    const diffMs = now.getTime() - then.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins === 1) return "1 min ago";
+    if (diffMins < 60) return `${diffMins} mins ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return "1 hour ago";
+    return `${diffHours} hours ago`;
+  }
+</script>
+
+{#if vehicle.currentLat && vehicle.currentLng}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="custom-vehicle-marker"
+    bind:this={markerEl}
+    style="--marker-color: {vehicle.route?.color || '#2a9d8f'}"
+  >
+    <div class="pin-marker">
+      <div class="pin-circle">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          {#if vehicle.type === "bus"}
+            <path d="M8 6v6" />
+            <path d="M15 6v6" />
+            <path d="M2 12h19.6" />
+            <path
+              d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"
+            />
+            <circle cx="7" cy="18" r="2" />
+            <path d="M9 18h5" />
+            <circle cx="16" cy="18" r="2" />
+          {:else}
+            <path
+              d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"
+            />
+            <circle cx="7" cy="17" r="2" />
+            <path d="M9 17h6" />
+            <circle cx="17" cy="17" r="2" />
+          {/if}
+        </svg>
+      </div>
+      <div class="pin-point"></div>
+    </div>
+  </div>
+
+  <Marker
+    lnglat={[vehicle.currentLng, vehicle.currentLat]}
+    element={markerEl}
+    subpixelPositioning={true}
+  >
+    <Popup offset={[0, -38]} closeButton={true}>
+      <div class="vehicle-popup">
+        <div class="popup-top">
+          <span class="vehicle-badge"
+            >{vehicle.type.replace("_", " ").toUpperCase()}</span
+          >
+          <span class="plate-badge">{vehicle.plateNumber}</span>
+        </div>
+
+        {#if vehicle.route}
+          <div class="route-section">
+            <div
+              class="route-color-bar"
+              style="background: {vehicle.route.color || '#2a9d8f'}"
+            ></div>
+            <div class="route-details">
+              <span class="route-code-badge">{vehicle.route.code}</span>
+              <span class="route-name-text">{vehicle.route.name}</span>
+            </div>
+          </div>
+        {/if}
+
+        <div class="stats-grid">
+          {#if vehicle.speed !== null}
+            <div class="stat-item">
+              <Gauge size={16} />
+              <div class="stat-content">
+                <span class="stat-label">Speed</span>
+                <span class="stat-value">{Math.round(vehicle.speed)} km/h</span>
+              </div>
+            </div>
+          {/if}
+
+          <div class="stat-item">
+            <Users size={16} />
+            <div class="stat-content">
+              <span class="stat-label">Capacity</span>
+              <span class="stat-value">{vehicle.capacity} seats</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="popup-footer">
+          <Clock size={14} />
+          <span>Updated {getTimeAgo(vehicle.lastUpdate)}</span>
+        </div>
+      </div>
+    </Popup>
+  </Marker>
+{/if}
 
 ```
 
@@ -791,7 +1827,7 @@ export const auth = new AuthManager()
             <div class="card-icon">
               <House size={24} strokeWidth={2} />
             </div>
-            <span class="card-label">House</span>
+            <span class="card-label">Home</span>
           </button>
 
           <button
@@ -897,7 +1933,7 @@ export const auth = new AuthManager()
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
+    padding: 1rem;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -932,7 +1968,7 @@ export const auth = new AuthManager()
   }
 
   .menu-btn {
-    padding: 0.75rem 1.25rem;
+    padding: 1.25rem;
     border: none;
     background-color: transparent;
     color: white;
@@ -1227,7 +2263,7 @@ export const auth = new AuthManager()
 // src/lib/vehicleStream.svelte.ts
 const url = import.meta.env.VITE_URL;
 
-interface Vehicle {
+export interface Vehicle {
   id: number;
   plateNumber: string;
   type: string;
@@ -1254,6 +2290,7 @@ class VehicleStreamManager {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 3000;
+  private currentRouteId?: number; // Store current routeId for reconnection
 
   connect(routeId?: number) {
     if (this.eventSource) {
@@ -1261,6 +2298,7 @@ class VehicleStreamManager {
     }
 
     this.error = null;
+    this.currentRouteId = routeId; // Save for reconnection
 
     const streamUrl = routeId
       ? `${url}/vehicles/stream?routeId=${routeId}`
@@ -1271,7 +2309,10 @@ class VehicleStreamManager {
 
       this.eventSource.addEventListener('initial', (event) => {
         try {
-          this.vehicles = JSON.parse(event.data);
+          this.vehicles = JSON.parse(event.data).map((v: Vehicle) => ({
+            ...v,
+            lastUpdate: v.lastUpdate ? new Date(v.lastUpdate).toISOString() : null
+          }));
           this.isConnected = true;
           this.reconnectAttempts = 0;
           console.log('📍 Initial vehicles loaded:', this.vehicles.length);
@@ -1283,8 +2324,19 @@ class VehicleStreamManager {
 
       this.eventSource.addEventListener('update', (event) => {
         try {
-          this.vehicles = JSON.parse(event.data);
-          console.log('🔄 Vehicles updated:', this.vehicles.length);
+          const updates: Vehicle[] = JSON.parse(event.data).map((v: Vehicle) => ({
+            ...v,
+            lastUpdate: v.lastUpdate ? new Date(v.lastUpdate).toISOString() : null
+          }));
+
+          const map = new Map(this.vehicles.map(v => [v.id, v]));
+
+          for (const v of updates) {
+            map.set(v.id, v);
+          }
+
+          this.vehicles = Array.from(map.values());
+          console.log('🔄 Vehicles updated:', updates.length);
         } catch (err) {
           console.error('Failed to parse update data:', err);
         }
@@ -1314,8 +2366,8 @@ class VehicleStreamManager {
       console.log(`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
 
       setTimeout(() => {
-        if (this.eventSource) {
-          this.connect();
+        if (!this.isConnected) { // Only reconnect if still not connected
+          this.connect(this.currentRouteId); // Use saved routeId
         }
       }, this.reconnectDelay * this.reconnectAttempts);
     } else {
@@ -1329,6 +2381,7 @@ class VehicleStreamManager {
       this.eventSource.close();
       this.eventSource = null;
       this.isConnected = false;
+      this.reconnectAttempts = 0;
       console.log('🔌 Disconnected from vehicle stream');
     }
   }
@@ -1370,6 +2423,7 @@ import GettingStarted from "./routes/GettingStarted.svelte"
 import Home from './routes/Home.svelte';
 import { auth } from './auth.svelte';
 import Login from './routes/Login.svelte';
+import CreateAccount from './routes/CreateAccount.svelte';
 
 // Helper to check setup state dynamically
 function isSetupComplete(): boolean {
@@ -1428,7 +2482,444 @@ export const { p, navigate, isActive, route } = createRouter({
       }
     }
   },
+  '/create-account': {
+    '/': CreateAccount,
+    hooks: {
+      async beforeLoad() {
+        // Redirect to setup if not complete
+        if (!isSetupComplete()) {
+          throw navigate('/')
+        }
+
+        // Redirect to home if already authenticated
+        const isAuthenticated = await auth.checkAuth()
+        if (isAuthenticated) {
+          throw navigate('/home')
+        }
+      }
+    }
+  },
 });
+
+```
+
+# src/routes/CreateAccount.svelte
+
+```svelte
+<script lang="ts">
+  import { auth } from "../auth.svelte";
+  import { navigate } from "../router";
+  import { UserPlus, User, Lock, Mail, CircleAlert } from "lucide-svelte";
+
+  let username = $state("");
+  let password = $state("");
+  let email = $state("");
+  let first_name = $state("");
+  let last_name = $state("");
+  let error = $state("");
+
+  async function createAccount(e: Event) {
+    e.preventDefault();
+
+    if (!username || !password || !email || !first_name || !last_name) {
+      error = "Please fill in all fields";
+      return;
+    }
+
+    error = "";
+
+    const result = await auth.register(
+      username,
+      password,
+      email,
+      first_name,
+      last_name,
+    );
+
+    if (result.success) {
+      navigate("/home");
+    } else {
+      error = result.error || "Failed to create account";
+    }
+  }
+</script>
+
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo-section">
+      <div class="logo-circle">
+        <UserPlus size={40} strokeWidth={2} />
+      </div>
+      <h1>Create Account</h1>
+      <p class="subtitle">Join Mappy to start your journey</p>
+    </div>
+
+    <form onsubmit={createAccount}>
+      <div class="input-group">
+        <label for="first_name">First Name</label>
+        <div class="input-wrapper">
+          <div class="input-icon">
+            <User size={20} strokeWidth={2} />
+          </div>
+          <input
+            id="first_name"
+            type="text"
+            bind:value={first_name}
+            placeholder="Enter your first name"
+            disabled={auth.isLoading}
+          />
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="last_name">Last Name</label>
+        <div class="input-wrapper">
+          <div class="input-icon">
+            <User size={20} strokeWidth={2} />
+          </div>
+          <input
+            id="last_name"
+            type="text"
+            bind:value={last_name}
+            placeholder="Enter your last name"
+            disabled={auth.isLoading}
+          />
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="email">Email</label>
+        <div class="input-wrapper">
+          <div class="input-icon">
+            <Mail size={20} strokeWidth={2} />
+          </div>
+          <input
+            id="email"
+            type="text"
+            bind:value={email}
+            placeholder="Enter your email"
+            disabled={auth.isLoading}
+          />
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="username">Username</label>
+        <div class="input-wrapper">
+          <div class="input-icon">
+            <User size={20} strokeWidth={2} />
+          </div>
+          <input
+            id="username"
+            type="text"
+            bind:value={username}
+            placeholder="Enter your username"
+            disabled={auth.isLoading}
+            autocomplete="username"
+          />
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label for="password">Password</label>
+        <div class="input-wrapper">
+          <div class="input-icon">
+            <Lock size={20} strokeWidth={2} />
+          </div>
+          <input
+            id="password"
+            type="password"
+            bind:value={password}
+            placeholder="Enter your password"
+            disabled={auth.isLoading}
+            autocomplete="new-password"
+          />
+        </div>
+      </div>
+
+      {#if error}
+        <div class="error-message">
+          <CircleAlert size={18} strokeWidth={2} />
+          <span>{error}</span>
+        </div>
+      {/if}
+
+      <button type="submit" class="login-btn" disabled={auth.isLoading}>
+        {#if auth.isLoading}
+          <div class="spinner"></div>
+          <span>Creating Account...</span>
+        {:else}
+          <UserPlus size={20} strokeWidth={2} />
+          <span>Sign Up</span>
+        {/if}
+      </button>
+    </form>
+
+    <div class="footer-links">
+      <span class="link-btn" style="cursor: default;"
+        >Already have an account?</span
+      >
+      <button type="button" class="link-btn" onclick={() => navigate("/login")}
+        >Sign in</button
+      >
+    </div>
+  </div>
+</div>
+
+<style>
+  .login-container {
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Animated background gradient */
+  .login-container::before {
+    content: "";
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, var(--verdigris) 0%, transparent 70%);
+    opacity: 0.15;
+    top: -250px;
+    right: -250px;
+    animation: pulse 8s ease-in-out infinite;
+  }
+
+  .login-container::after {
+    content: "";
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, var(--tuscan-sun) 0%, transparent 70%);
+    opacity: 0.1;
+    bottom: -200px;
+    left: -200px;
+    animation: pulse 10s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.15;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.2;
+    }
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 2.5rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo-section {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .logo-circle {
+    width: 5rem;
+    height: 5rem;
+    border-radius: 50%;
+    background: linear-gradient(
+      135deg,
+      var(--verdigris) 0%,
+      var(--tuscan-sun) 100%
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    margin: 0 auto 1.5rem;
+    box-shadow: 0 8px 24px rgba(42, 157, 143, 0.3);
+  }
+
+  .logo-section h1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .subtitle {
+    font-size: 0.9375rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    padding-left: 0.25rem;
+  }
+
+  .input-wrapper {
+    position: relative;
+  }
+
+  .input-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    padding: 1rem 1rem 1rem 3rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 0.9375rem;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+
+  input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--verdigris);
+    box-shadow: 0 0 0 3px rgba(42, 157, 143, 0.1);
+  }
+
+  input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .error-message {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem;
+    background: rgba(231, 111, 81, 0.1);
+    border: 1px solid rgba(231, 111, 81, 0.3);
+    border-radius: 12px;
+    color: var(--burnt-peach);
+    font-size: 0.875rem;
+    animation: slideIn 0.3s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .login-btn {
+    padding: 1rem;
+    background: linear-gradient(135deg, var(--verdigris) 0%, #248d82 100%);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    transition: all 0.2s;
+    margin-top: 0.5rem;
+  }
+
+  .login-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(42, 157, 143, 0.3);
+  }
+
+  .login-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .spinner {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .footer-links {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--verdigris);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .link-btn:hover {
+    color: var(--tuscan-sun);
+  }
+
+  @media (max-width: 480px) {
+    .login-card {
+      padding: 2rem 1.5rem;
+    }
+
+    .logo-section h1 {
+      font-size: 1.5rem;
+    }
+  }
+</style>
 
 ```
 
@@ -1525,7 +3016,7 @@ export const { p, navigate, isActive, route } = createRouter({
 <script lang="ts">
   import { auth } from "../auth.svelte";
   import { navigate } from "../router";
-  import { LogIn, User, Lock, AlertCircle } from "lucide-svelte";
+  import { LogIn, User, Lock, CircleAlert } from "lucide-svelte";
 
   let username = $state("");
   let password = $state("");
@@ -1598,7 +3089,7 @@ export const { p, navigate, isActive, route } = createRouter({
 
       {#if error}
         <div class="error-message">
-          <AlertCircle size={18} strokeWidth={2} />
+          <CircleAlert size={18} strokeWidth={2} />
           <span>{error}</span>
         </div>
       {/if}
@@ -1616,7 +3107,11 @@ export const { p, navigate, isActive, route } = createRouter({
 
     <div class="footer-links">
       <button type="button" class="link-btn">Forgot password?</button>
-      <button type="button" class="link-btn">Create account</button>
+      <button
+        type="button"
+        class="link-btn"
+        onclick={() => navigate("/create-account")}>Create account</button
+      >
     </div>
   </div>
 </div>
@@ -1890,3 +3385,13 @@ export const { p, navigate, isActive, route } = createRouter({
 </style>
 
 ```
+
+# src/vite-env.d.ts
+
+```ts
+/// <reference types="svelte" />
+/// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/svelte" />
+
+```
+

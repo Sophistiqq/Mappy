@@ -88,14 +88,6 @@ class AuthManager {
         return { success: false, error: errorData.message || 'Registration failed' };
       }
 
-      // After successful registration, fetch user details
-      const user = await this.fetchUser();
-      
-      if (!user) {
-        this.state.loading = false
-        return { success: false, error: 'Failed to fetch user data' }
-      }
-
       return { success: true };
     } catch (error) {
       console.error('Registration error:', error);

@@ -44,7 +44,12 @@ class AuthManager {
       }
 
       // After successful login, fetch user details
-      await this.fetchUser()
+      const user = await this.fetchUser()
+      
+      if (!user) {
+        this.state.loading = false
+        return { success: false, error: 'Failed to fetch user data' }
+      }
 
       return { success: true }
     } catch (error) {
@@ -85,7 +90,12 @@ class AuthManager {
       }
 
       // After successful registration, fetch user details
-      await this.fetchUser();
+      const user = await this.fetchUser();
+      
+      if (!user) {
+        this.state.loading = false
+        return { success: false, error: 'Failed to fetch user data' }
+      }
 
       return { success: true };
     } catch (error) {
@@ -167,6 +177,13 @@ class AuthManager {
     } catch (error) {
       console.error('Logout error:', error)
     }
+  }
+
+  // Force refresh auth state - useful after login/register
+  async refreshAuth(): Promise<boolean> {
+    this.authCheckPromise = null
+    this.state.isAuthenticated = null
+    return this.checkAuth()
   }
 
   // Derived state using $derived

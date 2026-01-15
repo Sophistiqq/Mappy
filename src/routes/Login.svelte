@@ -20,7 +20,11 @@
     const result = await auth.login(username, password);
 
     if (result.success) {
-      navigate("/home");
+      // Force a small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Use window.location for hard navigation to ensure clean state
+      window.location.href = '/home';
     } else {
       error = result.error || "Login failed";
     }

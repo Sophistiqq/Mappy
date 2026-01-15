@@ -43,13 +43,12 @@ class AuthManager {
         return { success: false, error: 'Invalid credentials' }
       }
 
-      // After successful login, fetch user details
-      const user = await this.fetchUser()
-      
-      if (!user) {
-        this.state.loading = false
-        return { success: false, error: 'Failed to fetch user data' }
-      }
+      const data = await res.json()
+
+      // Set user directly from login response
+      this.state.isAuthenticated = true
+      this.state.user = data.user
+      this.state.loading = false
 
       return { success: true }
     } catch (error) {

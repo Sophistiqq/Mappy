@@ -65,7 +65,7 @@
     {/if}
   </button>
 
-  <h3>Mappy</h3>
+  <h3>PUV Mapper</h3>
 
   {#if auth.isLoggedIn}
     <button type="button" class="menu-btn" onclick={toggleSidebar}>

@@ -14,9 +14,9 @@ export default defineConfig({
     },
 
     manifest: {
-      name: 'tut',
-      short_name: 'tut',
-      description: 'tut',
+      name: 'PUV-Mapper',
+      short_name: 'PUV-Mapper',
+      description: 'PUV-Mapper',
       theme_color: '#ffffff',
     },
 
